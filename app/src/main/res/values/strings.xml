@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ImitateMiCalendar</string>
+    <string name="calendar_scrolling_view_behavior" translatable="false">com.morrisware.imitatemicalendar.CalendarView$ScrollingViewBehavior</string>
+</resources>
