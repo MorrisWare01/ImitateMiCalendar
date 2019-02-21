@@ -134,16 +134,10 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                     setTopAndBottomOffset(newOffset);
                     newDy = getTopAndBottomOffset() - newOffset;
 
-                    final CoordinatorLayout.Behavior behavior = ((CoordinatorLayout.LayoutParams) target.getLayoutParams()).getBehavior();
-                    if (behavior instanceof ScrollingViewBehavior) {
-                        ScrollingViewBehavior scrollingViewBehavior = (ScrollingViewBehavior) behavior;
-                        scrollingViewBehavior.setTopAndBottomOffset((int) (scrollingViewBehavior.getTopAndBottomOffset() - (newDy / child.getScrollRate() - newDy)));
-                    }
                     consumed[1] = (int) (newDy / child.getScrollRate());
                 }
             }
         }
-
     }
 
     public static class ScrollingViewBehavior extends ViewOffsetBehavior<View> {
@@ -159,19 +153,19 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             return dependency instanceof CalendarView;
         }
 
-//        @Override
-//        public boolean onDependentViewChanged(@NonNull CoordinatorLayout parent, @NonNull View child, @NonNull View dependency) {
-//            final CalendarView calendarView = findFirstDependency(parent.getDependencies(child));
-//            if (calendarView != null) {
-//                final CoordinatorLayout.Behavior behavior =
-//                        ((CoordinatorLayout.LayoutParams) calendarView.getLayoutParams()).getBehavior();
-//                if (behavior instanceof Behavior) {
-//                    final Behavior ablBehavior = (Behavior) behavior;
-//                    setTopAndBottomOffset((int) (getTopAndBottomOffset() + (dependency.getBottom() - child.getTop() + ablBehavior.getTopAndBottomOffset() / calendarView.getScrollRate())));
-//                }
-//            }
-//            return false;
-//        }
+        @Override
+        public boolean onDependentViewChanged(@NonNull CoordinatorLayout parent, @NonNull View child, @NonNull View dependency) {
+            final CalendarView calendarView = findFirstDependency(parent.getDependencies(child));
+            if (calendarView != null) {
+                final CoordinatorLayout.Behavior behavior =
+                        ((CoordinatorLayout.LayoutParams) calendarView.getLayoutParams()).getBehavior();
+                if (behavior instanceof Behavior) {
+                    final Behavior ablBehavior = (Behavior) behavior;
+                    setTopAndBottomOffset((int) (getTopAndBottomOffset() + (dependency.getBottom() - child.getTop() + (ablBehavior.getTopAndBottomOffset() / calendarView.getScrollRate() - ablBehavior.getTopAndBottomOffset()))));
+                }
+            }
+            return false;
+        }
 
         @Override
         protected void layoutChild(CoordinatorLayout parent, View child, int layoutDirection) {
@@ -189,15 +183,15 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             child.setBottom(child.getBottom() + calendarHeight);
         }
 
-//        CalendarView findFirstDependency(List<View> views) {
-//            for (int i = 0, z = views.size(); i < z; i++) {
-//                View view = views.get(i);
-//                if (view instanceof CalendarView) {
-//                    return (CalendarView) view;
-//                }
-//            }
-//            return null;
-//        }
+        CalendarView findFirstDependency(List<View> views) {
+            for (int i = 0, z = views.size(); i < z; i++) {
+                View view = views.get(i);
+                if (view instanceof CalendarView) {
+                    return (CalendarView) view;
+                }
+            }
+            return null;
+        }
 
     }
 
