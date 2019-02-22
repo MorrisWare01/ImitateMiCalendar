@@ -2,15 +2,20 @@ package com.morrisware.imitatemicalendar;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.util.AttributeSet;
+import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.math.MathUtils;
+import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
-import com.google.android.material.appbar.AppBarLayout;
+
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -97,7 +102,7 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
     }
 
     private int getTotalScrollRange() {
-        return getHeight() / 5;
+        return Math.min(0, getHeight() - ITEM_HEIGHT);
     }
 
     private float getScrollRate() {
@@ -111,6 +116,8 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
     }
 
     public static class Behavior extends ViewOffsetBehavior<CalendarView> {
+
+        private int offsetDelta;
 
         @Override
         public boolean onStartNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull CalendarView child, @NonNull View directTargetChild, @NonNull View target, int axes, int type) {
@@ -128,21 +135,26 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                 min = -child.getTotalScrollRange();
                 max = 0;
 
-                int newDy = (int) (dy * child.getScrollRate());
-                int newOffset = MathUtils.clamp(getTopAndBottomOffset() - newDy, min, max);
-                if (getTopAndBottomOffset() != newOffset) {
-                    setTopAndBottomOffset(newOffset);
-                    newDy = getTopAndBottomOffset() - newOffset;
-
-                    consumed[1] = (int) (newDy / child.getScrollRate());
+                if (min != 0) {
+                    int newDy = (int) (dy * child.getScrollRate());
+                    int newOffset = MathUtils.clamp(getTopAndBottomOffset() - newDy, min, max);
+                    if (getTopAndBottomOffset() != newOffset) {
+                        final int curOffset = getTopAndBottomOffset();
+                        setTopAndBottomOffset(newOffset);
+                        newDy = curOffset - newOffset;
+                        consumed[1] = (int) (newDy / child.getScrollRate());
+                    }
+                } else {
+                    final CoordinatorLayout.Behavior behavior = ((CoordinatorLayout.LayoutParams) target.getLayoutParams()).getBehavior();
+                    if (behavior != null) {
+                        behavior.onNestedPreScroll(coordinatorLayout, target, child, dx, dy, consumed, type);
+                    }
                 }
             }
         }
     }
 
     public static class ScrollingViewBehavior extends ViewOffsetBehavior<View> {
-
-        private int calendarHeight;
 
         public ScrollingViewBehavior(Context context, AttributeSet attrs) {
             super(context, attrs);
@@ -161,26 +173,55 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                         ((CoordinatorLayout.LayoutParams) calendarView.getLayoutParams()).getBehavior();
                 if (behavior instanceof Behavior) {
                     final Behavior ablBehavior = (Behavior) behavior;
-                    setTopAndBottomOffset((int) (getTopAndBottomOffset() + (dependency.getBottom() - child.getTop() + (ablBehavior.getTopAndBottomOffset() / calendarView.getScrollRate() - ablBehavior.getTopAndBottomOffset()))));
+                    setTopAndBottomOffset((int) (getTopAndBottomOffset() + (dependency.getBottom() - child.getTop()
+                            + (ablBehavior.getTopAndBottomOffset() / calendarView.getScrollRate() - ablBehavior.getTopAndBottomOffset()))));
                 }
             }
             return false;
         }
 
         @Override
-        protected void layoutChild(CoordinatorLayout parent, View child, int layoutDirection) {
-            super.layoutChild(parent, child, layoutDirection);
-            if (calendarHeight == 0) {
-                final List<View> dependencies = parent.getDependencies(child);
-                for (int i = 0, z = dependencies.size(); i < z; i++) {
-                    View view = dependencies.get(i);
-                    if (view instanceof CalendarView) {
-                        calendarHeight = view.getMeasuredHeight();
-                    }
+        public void onNestedPreScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull View child, @NonNull View target, int dx, int dy, @NonNull int[] consumed, int type) {
+            super.onNestedPreScroll(coordinatorLayout, child, target, dx, dy, consumed, type);
+            if (target instanceof CalendarView) {
+                CalendarView calendarView = (CalendarView) target;
+                int min, max;
+                min = ITEM_HEIGHT - (calendarView.getBottom() - calendarView.getTop());
+                max = 0;
+                int newOffset = MathUtils.clamp(getTopAndBottomOffset() - dy, min, max);
+                if (newOffset != getTopAndBottomOffset()) {
+                    final int curOffset = getTopAndBottomOffset();
+                    setTopAndBottomOffset(newOffset);
+                    consumed[1] = curOffset - newOffset;
                 }
             }
-            child.setTop(calendarHeight);
-            child.setBottom(child.getBottom() + calendarHeight);
+        }
+
+        @Override
+        protected void layoutChild(CoordinatorLayout parent, View child, int layoutDirection) {
+            super.layoutChild(parent, child, layoutDirection);
+            final List<View> dependencies = parent.getDependencies(child);
+            final View header = findFirstDependency(dependencies);
+            if (header != null) {
+                final CoordinatorLayout.LayoutParams lp =
+                        (CoordinatorLayout.LayoutParams) child.getLayoutParams();
+
+                final Rect available = new Rect();
+                available.set(parent.getPaddingLeft() + lp.leftMargin,
+                        header.getBottom() + lp.topMargin,
+                        parent.getWidth() - parent.getPaddingRight() - lp.rightMargin,
+                        parent.getHeight() + header.getBottom()
+                                - parent.getPaddingBottom() - lp.bottomMargin);
+
+                final Rect out = new Rect();
+                GravityCompat.apply(resolveGravity(lp.gravity), child.getMeasuredWidth(),
+                        child.getMeasuredHeight(), available, out, layoutDirection);
+                child.layout(out.left, out.top, out.right, out.bottom);
+            }
+        }
+
+        private static int resolveGravity(int gravity) {
+            return gravity == Gravity.NO_GRAVITY ? GravityCompat.START | Gravity.TOP : gravity;
         }
 
         CalendarView findFirstDependency(List<View> views) {
