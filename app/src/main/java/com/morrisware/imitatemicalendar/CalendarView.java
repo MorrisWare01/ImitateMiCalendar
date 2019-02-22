@@ -5,8 +5,8 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -118,11 +118,12 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
         return new Behavior();
     }
 
-    public static class Behavior extends ViewOffsetBehavior<CalendarView> {
+    public static class Behavior extends HeaderBehavior<CalendarView> {
 
         private static final int MAX_OFFSET_ANIMATION_DURATION = 600;
 
         private ValueAnimator mOffsetAnimator;
+        private WeakReference<View> mLastNestedScrollingChildRef;
 
         @Override
         public boolean onStartNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull CalendarView child, @NonNull View directTargetChild, @NonNull View target, int axes, int type) {
@@ -139,6 +140,9 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                     behavior.onStartNestedScroll(coordinatorLayout, child, directTargetChild, target, axes, type);
                 }
             }
+
+            // A new nested scroll has started so clear out the previous ref
+            mLastNestedScrollingChildRef = null;
 
             return started;
         }
@@ -175,6 +179,9 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             } else if (type == ViewCompat.TYPE_TOUCH) {
                 snapToChildIfNeeded(coordinatorLayout, child);
             }
+
+            // Keep a reference to the previous nested scrolling child
+            mLastNestedScrollingChildRef = new WeakReference<>(target);
         }
 
         @Override
@@ -189,6 +196,50 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                 return true;
             }
             return super.onNestedPreFling(coordinatorLayout, child, target, velocityX, velocityY);
+        }
+
+        @Override
+        boolean canDragView(CalendarView view) {
+            // Else we'll use the default behaviour of seeing if it can scroll down
+            if (mLastNestedScrollingChildRef != null) {
+                // If we have a reference to a scrolling view, check it
+                final View scrollingView = mLastNestedScrollingChildRef.get();
+                return scrollingView != null && scrollingView.isShown()
+                        && !scrollingView.canScrollVertically(-1);
+            } else {
+                // Otherwise we assume that the scrolling view hasn't been scrolled and can drag.
+                return true;
+            }
+        }
+
+        @Override
+        int setHeaderTopBottomOffset(CoordinatorLayout parent, CalendarView header, int newOffset, int minOffset, int maxOffset) {
+            return super.setHeaderTopBottomOffset(parent, header, newOffset, minOffset, maxOffset);
+        }
+
+        @Override
+        int getMaxDragOffset(CalendarView view) {
+            return -view.getTotalScrollRange();
+        }
+
+        @Override
+        int getScrollRangeForDragFling(CalendarView view) {
+            return view.getTotalScrollRange();
+        }
+
+        @Override
+        void flingWithNestedDispatch(CoordinatorLayout parent, CalendarView child, int velocityY) {
+            snapToChildIfNeeded(parent, child);
+        }
+
+        @Override
+        public boolean onTouchEvent(@NotNull CoordinatorLayout parent, @NotNull CalendarView child, @NotNull MotionEvent ev) {
+            switch (ev.getActionMasked()) {
+                case MotionEvent.ACTION_UP:
+                    onStopNestedScroll(parent, child, child, ViewCompat.TYPE_TOUCH);
+                    break;
+            }
+            return super.onTouchEvent(parent, child, ev);
         }
 
         private void snapToChildIfNeeded(CoordinatorLayout coordinatorLayout, CalendarView calendarView) {
@@ -244,31 +295,6 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             mOffsetAnimator.setDuration(Math.min(duration, MAX_OFFSET_ANIMATION_DURATION));
             mOffsetAnimator.setIntValues(currentOffset, offset);
             mOffsetAnimator.start();
-        }
-
-        private int setHeaderTopBottomOffset(CoordinatorLayout parent, View header, int newOffset) {
-            return setHeaderTopBottomOffset(parent, header, newOffset,
-                    Integer.MIN_VALUE, Integer.MAX_VALUE);
-        }
-
-        private int setHeaderTopBottomOffset(CoordinatorLayout parent, View header, int newOffset,
-                                             int minOffset, int maxOffset) {
-            final int curOffset = getTopAndBottomOffset();
-            int consumed = 0;
-
-            if (minOffset != 0 && curOffset >= minOffset && curOffset <= maxOffset) {
-                // If we have some scrolling range, and we're currently within the min and max
-                // offsets, calculate a new offset
-                newOffset = MathUtils.clamp(newOffset, minOffset, maxOffset);
-
-                if (curOffset != newOffset) {
-                    setTopAndBottomOffset(newOffset);
-                    // Update how much dy we have consumed
-                    consumed = curOffset - newOffset;
-                }
-            }
-
-            return consumed;
         }
     }
 

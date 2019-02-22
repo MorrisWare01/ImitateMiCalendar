@@ -42,6 +42,9 @@ public abstract class HeaderBehavior<V extends View> extends ViewOffsetBehavior<
     private int mActivePointerId = INVALID_POINTER;
     private int mLastMotionY;
     private int mTouchSlop = -1;
+    private float mMinimumVelocity = -1;
+    private float mMaximumVelocity = -1;
+
     private VelocityTracker mVelocityTracker;
 
     public HeaderBehavior() {
@@ -55,6 +58,12 @@ public abstract class HeaderBehavior<V extends View> extends ViewOffsetBehavior<
     public boolean onInterceptTouchEvent(CoordinatorLayout parent, V child, MotionEvent ev) {
         if (mTouchSlop < 0) {
             mTouchSlop = ViewConfiguration.get(parent.getContext()).getScaledTouchSlop();
+        }
+        if (mMinimumVelocity < 0) {
+            mMinimumVelocity = ViewConfiguration.get(parent.getContext()).getScaledMinimumFlingVelocity();
+        }
+        if (mMaximumVelocity < 0) {
+            mMaximumVelocity = ViewConfiguration.get(parent.getContext()).getScaledMaximumFlingVelocity();
         }
 
         final int action = ev.getAction();
@@ -166,9 +175,11 @@ public abstract class HeaderBehavior<V extends View> extends ViewOffsetBehavior<
             case MotionEvent.ACTION_UP:
                 if (mVelocityTracker != null) {
                     mVelocityTracker.addMovement(ev);
-                    mVelocityTracker.computeCurrentVelocity(1000);
+                    mVelocityTracker.computeCurrentVelocity(1000, mMaximumVelocity);
                     float yvel = mVelocityTracker.getYVelocity(mActivePointerId);
-                    fling(parent, child, -getScrollRangeForDragFling(child), 0, yvel);
+                    if ((Math.abs(yvel) > mMinimumVelocity)) {
+                        flingWithNestedDispatch(parent, child, (int) -yvel);
+                    }
                 }
                 // $FALLTHROUGH
             case MotionEvent.ACTION_CANCEL: {
@@ -257,6 +268,9 @@ public abstract class HeaderBehavior<V extends View> extends ViewOffsetBehavior<
      */
     void onFlingFinished(CoordinatorLayout parent, V layout) {
         // no-op
+    }
+
+    void flingWithNestedDispatch(CoordinatorLayout parent, V child, int velocityY) {
     }
 
     /**
