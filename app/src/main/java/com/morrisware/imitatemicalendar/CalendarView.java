@@ -29,7 +29,9 @@ import java.util.List;
  **/
 public class CalendarView extends ViewGroup implements CoordinatorLayout.AttachedBehavior {
 
-    private int currentPos = 4;
+    // 当前日期所在行
+    private int currentPos = 0;
+
     private int mTotalLength;
 
     private int itemHeight;
@@ -107,7 +109,7 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
     }
 
     private int getTotalScrollRange() {
-        return Math.min(getHeight() * 2 / 5, getHeight() - itemHeight);
+        return Math.min(getHeight() * currentPos / 5, getHeight() - itemHeight);
     }
 
     @NonNull
@@ -131,6 +133,12 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                 mOffsetAnimator.cancel();
             }
 
+            if (child.getTotalScrollRange() == 0) {
+                final CoordinatorLayout.Behavior behavior = ((CoordinatorLayout.LayoutParams) target.getLayoutParams()).getBehavior();
+                if (behavior != null) {
+                    behavior.onStartNestedScroll(coordinatorLayout, child, directTargetChild, target, axes, type);
+                }
+            }
             return started;
         }
 
@@ -139,41 +147,44 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             if (dy < 0 && target.canScrollVertically(-1)) {
                 return;
             }
-
             if (dy != 0) {
-                int min, max;
-                min = -child.getTotalScrollRange();
-                max = 0;
-
-                if (min != 0) {
-                    int newDy = dy * child.getTotalScrollRange() / (child.getHeight() - child.itemHeight);
-                    int newOffset = MathUtils.clamp(getTopAndBottomOffset() - newDy, min, max);
-                    if (getTopAndBottomOffset() != newOffset) {
-                        final int curOffset = getTopAndBottomOffset();
-                        setTopAndBottomOffset(newOffset);
-                        newDy = curOffset - newOffset;
-                        consumed[1] = newDy * (child.getHeight() - child.itemHeight) / child.getTotalScrollRange();
-                    }
-                } else {
+                if (child.getTotalScrollRange() == 0) {
                     final CoordinatorLayout.Behavior behavior = ((CoordinatorLayout.LayoutParams) target.getLayoutParams()).getBehavior();
                     if (behavior != null) {
                         behavior.onNestedPreScroll(coordinatorLayout, target, child, dx, dy, consumed, type);
                     }
+                } else {
+                    int min, max;
+                    min = -child.getTotalScrollRange();
+                    max = 0;
+                    int newDy = dy * child.getTotalScrollRange() / (child.getHeight() - child.itemHeight);
+                    int consumedY = setHeaderTopBottomOffset(coordinatorLayout, child, getTopAndBottomOffset() - newDy, min, max);
+                    consumed[1] = consumedY * (child.getHeight() - child.itemHeight) / child.getTotalScrollRange();
                 }
             }
         }
 
         @Override
         public void onStopNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull CalendarView child, @NonNull View target, int type) {
-            if (type == ViewCompat.TYPE_TOUCH) {
+            if (child.getTotalScrollRange() == 0) {
+                final CoordinatorLayout.Behavior behavior = ((CoordinatorLayout.LayoutParams) target.getLayoutParams()).getBehavior();
+                if (behavior != null) {
+                    behavior.onStopNestedScroll(coordinatorLayout, target, child, type);
+                }
+            } else if (type == ViewCompat.TYPE_TOUCH) {
                 snapToChildIfNeeded(coordinatorLayout, child);
             }
         }
 
         @Override
         public boolean onNestedPreFling(@NonNull CoordinatorLayout coordinatorLayout, @NonNull CalendarView child, @NonNull View target, float velocityX, float velocityY) {
-            if (getTopAndBottomOffset() > -child.getTotalScrollRange()) {
-                animateOffsetTo(coordinatorLayout, child, -child.getTotalScrollRange(), 0);
+            if (getTopAndBottomOffset() == 0) {
+                final CoordinatorLayout.Behavior behavior = ((CoordinatorLayout.LayoutParams) target.getLayoutParams()).getBehavior();
+                if (behavior != null) {
+                    return behavior.onNestedPreFling(coordinatorLayout, target, child, velocityX, velocityY);
+                }
+            } else if (getTopAndBottomOffset() > -child.getTotalScrollRange()) {
+                animateOffsetTo(coordinatorLayout, child, -child.getTotalScrollRange(), velocityY);
                 return true;
             }
             return super.onNestedPreFling(coordinatorLayout, child, target, velocityX, velocityY);
@@ -262,6 +273,10 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
 
     public static class ScrollingViewBehavior extends ViewOffsetBehavior<View> {
 
+        private static final int MAX_OFFSET_ANIMATION_DURATION = 600;
+
+        private ValueAnimator mOffsetAnimator;
+
         public ScrollingViewBehavior(Context context, AttributeSet attrs) {
             super(context, attrs);
         }
@@ -274,7 +289,7 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
         @Override
         public boolean onDependentViewChanged(@NonNull CoordinatorLayout parent, @NonNull View child, @NonNull View dependency) {
             final CalendarView calendarView = findFirstDependency(parent.getDependencies(child));
-            if (calendarView != null) {
+            if (calendarView != null && calendarView.getTotalScrollRange() > 0) {
                 final CoordinatorLayout.Behavior behavior =
                         ((CoordinatorLayout.LayoutParams) calendarView.getLayoutParams()).getBehavior();
                 if (behavior instanceof Behavior) {
@@ -285,6 +300,15 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                 }
             }
             return false;
+        }
+
+        @Override
+        public boolean onStartNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull View child, @NonNull View directTargetChild, @NonNull View target, int axes, int type) {
+            if (mOffsetAnimator != null) {
+                // Cancel any offset animation
+                mOffsetAnimator.cancel();
+            }
+            return super.onStartNestedScroll(coordinatorLayout, child, directTargetChild, target, axes, type);
         }
 
         @Override
@@ -302,6 +326,109 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                     consumed[1] = curOffset - newOffset;
                 }
             }
+        }
+
+        @Override
+        public void onStopNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull View child, @NonNull View target, int type) {
+            super.onStopNestedScroll(coordinatorLayout, child, target, type);
+            if (type == ViewCompat.TYPE_TOUCH) {
+                snapToChildIfNeeded(coordinatorLayout, child, 0);
+            }
+        }
+
+        @Override
+        public boolean onNestedPreFling(@NonNull CoordinatorLayout coordinatorLayout, @NonNull View child, @NonNull View target, float velocityX, float velocityY) {
+            CalendarView calendarView = findFirstDependency(coordinatorLayout.getDependencies(child));
+            if (calendarView != null) {
+                int min = calendarView.itemHeight - (calendarView.getBottom() - calendarView.getTop());
+                if (getTopAndBottomOffset() > min) {
+                    snapToChildIfNeeded(coordinatorLayout, child, velocityY);
+                    return true;
+                }
+            }
+            return super.onNestedPreFling(coordinatorLayout, child, target, velocityX, velocityY);
+        }
+
+        private void snapToChildIfNeeded(CoordinatorLayout coordinatorLayout, View child, float velocityY) {
+            CalendarView calendarView = findFirstDependency(coordinatorLayout.getDependencies(child));
+            if (calendarView != null) {
+                int min = calendarView.itemHeight - (calendarView.getBottom() - calendarView.getTop());
+                int max = 0;
+                final int offset = getTopAndBottomOffset();
+                if (offset <= min) {
+                    return;
+                }
+
+                final int newOffset = offset < (min + max) / 2 ? min : max;
+                animateOffsetTo(coordinatorLayout, child, MathUtils.clamp(newOffset, min, max), velocityY);
+            }
+        }
+
+        private void animateOffsetTo(CoordinatorLayout coordinatorLayout, View child, final int offset, float velocity) {
+            final int distance = Math.abs(getTopAndBottomOffset() - offset);
+
+            final int duration;
+            velocity = Math.abs(velocity);
+            if (velocity > 0) {
+                duration = 3 * Math.round(1000 * (distance / velocity));
+            } else {
+                final float distanceRatio = (float) distance / child.getHeight();
+                duration = (int) ((distanceRatio + 1) * 150);
+            }
+
+            animateOffsetWithDuration(coordinatorLayout, child, offset, duration);
+        }
+
+        private void animateOffsetWithDuration(final CoordinatorLayout coordinatorLayout, final View child, int offset, int duration) {
+            final int currentOffset = getTopAndBottomOffset();
+            if (currentOffset == offset) {
+                if (mOffsetAnimator != null && mOffsetAnimator.isRunning()) {
+                    mOffsetAnimator.cancel();
+                }
+                return;
+            }
+
+            if (mOffsetAnimator == null) {
+                mOffsetAnimator = new ValueAnimator();
+                mOffsetAnimator.setInterpolator(AnimationUtils.DECELERATE_INTERPOLATOR);
+                mOffsetAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                    @Override
+                    public void onAnimationUpdate(ValueAnimator animation) {
+                        setHeaderTopBottomOffset(coordinatorLayout, child, (int) animation.getAnimatedValue());
+                    }
+                });
+            } else {
+                mOffsetAnimator.cancel();
+            }
+
+            mOffsetAnimator.setDuration(Math.min(duration, MAX_OFFSET_ANIMATION_DURATION));
+            mOffsetAnimator.setIntValues(currentOffset, offset);
+            mOffsetAnimator.start();
+        }
+
+        private int setHeaderTopBottomOffset(CoordinatorLayout parent, View header, int newOffset) {
+            return setHeaderTopBottomOffset(parent, header, newOffset,
+                    Integer.MIN_VALUE, Integer.MAX_VALUE);
+        }
+
+        private int setHeaderTopBottomOffset(CoordinatorLayout parent, View header, int newOffset,
+                                             int minOffset, int maxOffset) {
+            final int curOffset = getTopAndBottomOffset();
+            int consumed = 0;
+
+            if (minOffset != 0 && curOffset >= minOffset && curOffset <= maxOffset) {
+                // If we have some scrolling range, and we're currently within the min and max
+                // offsets, calculate a new offset
+                newOffset = MathUtils.clamp(newOffset, minOffset, maxOffset);
+
+                if (curOffset != newOffset) {
+                    setTopAndBottomOffset(newOffset);
+                    // Update how much dy we have consumed
+                    consumed = curOffset - newOffset;
+                }
+            }
+
+            return consumed;
         }
 
         @Override
