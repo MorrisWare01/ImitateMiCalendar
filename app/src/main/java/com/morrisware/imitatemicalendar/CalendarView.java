@@ -123,7 +123,6 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
         private static final int MAX_OFFSET_ANIMATION_DURATION = 600;
 
         private ValueAnimator mOffsetAnimator;
-        private WeakReference<View> mLastNestedScrollingChildRef;
 
         @Override
         public boolean onStartNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull CalendarView child, @NonNull View directTargetChild, @NonNull View target, int axes, int type) {
@@ -140,9 +139,6 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                     behavior.onStartNestedScroll(coordinatorLayout, child, directTargetChild, target, axes, type);
                 }
             }
-
-            // A new nested scroll has started so clear out the previous ref
-            mLastNestedScrollingChildRef = null;
 
             return started;
         }
@@ -179,9 +175,6 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             } else if (type == ViewCompat.TYPE_TOUCH) {
                 snapToChildIfNeeded(coordinatorLayout, child);
             }
-
-            // Keep a reference to the previous nested scrolling child
-            mLastNestedScrollingChildRef = new WeakReference<>(target);
         }
 
         @Override
