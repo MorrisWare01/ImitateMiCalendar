@@ -5,13 +5,15 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 
 import com.google.android.material.animation.AnimationUtils;
-import com.google.android.material.appbar.AppBarLayout;
+
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -19,10 +21,6 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.math.MathUtils;
 import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
-
-import org.jetbrains.annotations.NotNull;
-
-import java.util.List;
 
 /**
  * Created by mmw on 2019/2/15.
