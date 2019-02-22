@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -213,33 +214,26 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
         }
 
         @Override
-        int setHeaderTopBottomOffset(CoordinatorLayout parent, CalendarView header, int newOffset, int minOffset, int maxOffset) {
-            return super.setHeaderTopBottomOffset(parent, header, newOffset, minOffset, maxOffset);
-        }
-
-        @Override
-        int getMaxDragOffset(CalendarView view) {
-            return -view.getTotalScrollRange();
-        }
-
-        @Override
-        int getScrollRangeForDragFling(CalendarView view) {
-            return view.getTotalScrollRange();
-        }
-
-        @Override
-        void flingWithNestedDispatch(CoordinatorLayout parent, CalendarView child, int velocityY) {
-            snapToChildIfNeeded(parent, child);
-        }
-
-        @Override
-        public boolean onTouchEvent(@NotNull CoordinatorLayout parent, @NotNull CalendarView child, @NotNull MotionEvent ev) {
-            switch (ev.getActionMasked()) {
-                case MotionEvent.ACTION_UP:
-                    onStopNestedScroll(parent, child, child, ViewCompat.TYPE_TOUCH);
-                    break;
+        int scroll(CoordinatorLayout coordinatorLayout, CalendarView header, int dy, int minOffset, int maxOffset) {
+            if (header.getTotalScrollRange() == 0) {
+                List<View> dependents = coordinatorLayout.getDependents(header);
+                if (!dependents.isEmpty()) {
+                    int[] consumed = new int[]{0, 0};
+                    for (int i = 0; i < dependents.size(); i++) {
+                        final View child = dependents.get(i);
+                        CoordinatorLayout.LayoutParams lp = (CoordinatorLayout.LayoutParams)
+                                child.getLayoutParams();
+                        CoordinatorLayout.Behavior b = lp.getBehavior();
+                        if (b != null) {
+                            b.onNestedPreScroll(coordinatorLayout, child, header, 0, dy, consumed, ViewCompat.TYPE_TOUCH);
+                            return consumed[1];
+                        }
+                    }
+                }
+            } else {
+                return super.scroll(coordinatorLayout, header, dy, minOffset, maxOffset);
             }
-            return super.onTouchEvent(parent, child, ev);
+            return 0;
         }
 
         private void snapToChildIfNeeded(CoordinatorLayout coordinatorLayout, CalendarView calendarView) {

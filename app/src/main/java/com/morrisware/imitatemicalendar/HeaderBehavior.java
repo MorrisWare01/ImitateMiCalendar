@@ -229,8 +229,8 @@ public abstract class HeaderBehavior<V extends View> extends ViewOffsetBehavior<
         return getTopAndBottomOffset();
     }
 
-    final int scroll(CoordinatorLayout coordinatorLayout, V header,
-                     int dy, int minOffset, int maxOffset) {
+    int scroll(CoordinatorLayout coordinatorLayout, V header,
+               int dy, int minOffset, int maxOffset) {
         return setHeaderTopBottomOffset(coordinatorLayout, header,
                 getTopBottomOffsetForScrollingSibling() - dy, minOffset, maxOffset);
     }
