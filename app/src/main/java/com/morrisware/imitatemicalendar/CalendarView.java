@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,6 +14,7 @@ import com.google.android.material.animation.AnimationUtils;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 
 import androidx.annotation.NonNull;
@@ -28,7 +30,7 @@ import androidx.core.view.ViewCompat;
 public class CalendarView extends ViewGroup implements CoordinatorLayout.AttachedBehavior {
 
     // 当前日期所在行
-    private int currentPos = 0;
+    private int currentPos = 1;
 
     private int mTotalLength;
 
@@ -121,6 +123,7 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
         private static final int MAX_OFFSET_ANIMATION_DURATION = 600;
 
         private ValueAnimator mOffsetAnimator;
+        private WeakReference<View> mLastNestedScrollingChildRef;
 
         @Override
         public boolean onStartNestedScroll(@NonNull CoordinatorLayout coordinatorLayout, @NonNull CalendarView child, @NonNull View directTargetChild, @NonNull View target, int axes, int type) {
@@ -137,6 +140,10 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
                     behavior.onStartNestedScroll(coordinatorLayout, child, directTargetChild, target, axes, type);
                 }
             }
+
+            // A new nested scroll has started so clear out the previous ref
+            mLastNestedScrollingChildRef = null;
+
             return started;
         }
 
@@ -172,6 +179,9 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             } else if (type == ViewCompat.TYPE_TOUCH) {
                 snapToChildIfNeeded(coordinatorLayout, child);
             }
+
+            // Keep a reference to the previous nested scrolling child
+            mLastNestedScrollingChildRef = new WeakReference<>(target);
         }
 
         @Override
@@ -243,12 +253,12 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
             mOffsetAnimator.start();
         }
 
-        private int setHeaderTopBottomOffset(CoordinatorLayout parent, CalendarView header, int newOffset) {
+        private int setHeaderTopBottomOffset(CoordinatorLayout parent, View header, int newOffset) {
             return setHeaderTopBottomOffset(parent, header, newOffset,
                     Integer.MIN_VALUE, Integer.MAX_VALUE);
         }
 
-        private int setHeaderTopBottomOffset(CoordinatorLayout parent, CalendarView header, int newOffset,
+        private int setHeaderTopBottomOffset(CoordinatorLayout parent, View header, int newOffset,
                                              int minOffset, int maxOffset) {
             final int curOffset = getTopAndBottomOffset();
             int consumed = 0;
@@ -287,14 +297,26 @@ public class CalendarView extends ViewGroup implements CoordinatorLayout.Attache
         @Override
         public boolean onDependentViewChanged(@NonNull CoordinatorLayout parent, @NonNull View child, @NonNull View dependency) {
             final CalendarView calendarView = findFirstDependency(parent.getDependencies(child));
-            if (calendarView != null && calendarView.getTotalScrollRange() > 0) {
+            if (calendarView != null) {
                 final CoordinatorLayout.Behavior behavior =
                         ((CoordinatorLayout.LayoutParams) calendarView.getLayoutParams()).getBehavior();
                 if (behavior instanceof Behavior) {
                     final Behavior clBehavior = (Behavior) behavior;
-                    setTopAndBottomOffset(getTopAndBottomOffset() + (dependency.getBottom() - child.getTop()
-                            + (clBehavior.getTopAndBottomOffset() * (calendarView.getHeight() - calendarView.itemHeight) / calendarView.getTotalScrollRange()
-                            - clBehavior.getTopAndBottomOffset())));
+                    int extraOffset = 0;
+                    if (calendarView.getTotalScrollRange() == 0) {
+                        int dy = child.getTop() - calendarView.getBottom();
+                        int min, max;
+                        min = calendarView.itemHeight - (calendarView.getBottom() - calendarView.getTop());
+                        max = 0;
+                        int newOffset = MathUtils.clamp(getTopAndBottomOffset() - dy, min, max);
+                        if (newOffset != getTopAndBottomOffset()) {
+                            extraOffset = newOffset;
+                        }
+                    } else {
+                        extraOffset = clBehavior.getTopAndBottomOffset() * (calendarView.getHeight() - calendarView.itemHeight)
+                                / calendarView.getTotalScrollRange() - clBehavior.getTopAndBottomOffset();
+                    }
+                    setTopAndBottomOffset(getTopAndBottomOffset() + (dependency.getBottom() - child.getTop() + extraOffset));
                 }
             }
             return false;
